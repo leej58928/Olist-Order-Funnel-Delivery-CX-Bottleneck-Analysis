@@ -1,0 +1,2 @@
+# Olist-Order-Funnel---Delivery-CX-Bottleneck-Analysis
+This project defines an operational funnel (Order → Approved → Carrier → Delivered → Review) using the public Olist Brazilian e-commerce dataset (2016–2018).   Without clickstream logs, the funnel is built from order status timestamps. The analysis identifies where delays originate and how those bottlenecks correlate with customer satisfaction.
