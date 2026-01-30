@@ -1,96 +1,69 @@
 # Olist Order Funnel & Delivery CX Bottleneck Analysis (BigQuery SQL)
 
 ## Overview
-This project defines an operational funnel (Order → Approved → Carrier → Delivered → Review) using the public Olist Brazilian e-commerce dataset (2016–2018).  
-Without clickstream logs, the funnel is built from order status timestamps. The analysis identifies where delays originate and how those bottlenecks correlate with customer satisfaction (review scores).
+This project analyzes 100K+ real e-commerce orders from Olist (Brazilian marketplace) to understand where operational delays occur in the order lifecycle and how those delays translate into customer dissatisfaction.  
+Unlike web analytics funnels that rely on clickstream logs, this work defines a **status-based operational funnel** using real order timestamps (purchase → approval → carrier handoff → delivery → review). The core objective is to identify bottlenecks that are actionable for operations (Ops) teams and measurable in terms of customer outcomes.
 
 ## Business Problem
-Olist operates nationwide in Brazil, where logistics complexity can create delivery delays that negatively impact customer experience (CX).  
-Goal: quantify stage-level lead times, define “bad experience drop” as delivery delay, and diagnose bottlenecks by region to propose actionable improvements.
+In marketplace logistics, delivery experience is a major driver of customer satisfaction. When delivery reliability degrades, customer reviews tend to drop and customer trust weakens—ultimately creating downstream retention risk.  
+The hypothesis behind this project is:
 
-## Dataset
-- Brazilian E-Commerce Public Dataset by Olist (Kaggle)
-- Core tables used:
-  - `orders`, `customers`, `order_reviews` (plus derived views)
+**Delays in early fulfillment stages (especially seller handoff) increase delivery delay probability and reduce review scores.**
 
-## Tech Stack
-- BigQuery (Standard SQL)
-- GitHub (SQL scripts + documentation)
+To validate this, I measured lead times between each stage, defined delivery delay against the estimated delivery date, and examined how operational latency correlates with review outcomes across regions.
 
-## Key Definitions
-- **Funnel Stage Flags**
-  - `has_purchase`, `has_approved`, `has_carrier`, `has_delivered`, `has_review`
-- **Delivery Delay (Bad Experience Drop)**
-  - `delay_days = DATE(delivered_ts) - estimated_delivery_date`
-  - `is_delayed = 1` if `delay_days > 0` (only defined for delivered orders; otherwise NULL)
+## Data
+This analysis uses publicly available Olist datasets (orders, customers, and reviews). The work is performed in **BigQuery SQL** by building order-level analytical views:
 
-## Data Modeling (Views)
-All analysis is built on order-level, 1-row-per-order views to avoid join explosion.
+- `orders`: order status and timestamp fields for each stage
+- `customers`: customer location fields (state/city) for segmentation
+- `order_reviews`: review score and timestamps for satisfaction proxy
 
-1. `v_reviews_1per_order`  
-   - Aggregates `order_reviews` to one row per `order_id`.
-2. `v_order_fact`  
-   - Order-level fact view joining `orders` + `customers` + `v_reviews_1per_order`.
-3. `v_funnel_flags`  
-   - Creates funnel stage flags.
-4. `v_delay_flags`  
-   - Creates `delay_days` and `is_delayed`.
-5. `v_lead_times`  
-   - Decomposes lead times:
-     - purchase→approved
-     - approved→carrier (seller handoff)
-     - carrier→delivered (shipping transit)
-6. `v_lead_time_with_delay`  
-   - Lead times joined with delay labels for analysis.
+Because review data can contain multiple rows per order, a 1-row-per-order view is created to model satisfaction at the order level.
 
-## Key Findings
+## Approach
+The project follows a production-style workflow: define an analytical grain, build reusable views, validate row counts and missingness, and only then run analysis queries.
 
-### 1) Delayed orders show both early and late bottlenecks
-Comparing delivered orders by delay status:
+1) **Order-level fact table**  
+I created an order-level “fact” view by joining orders, customers, and deduplicated review signals. This view becomes the single source of truth for downstream funnel and lead-time analysis.
 
-- Non-delayed orders:
-  - avg approved→carrier: **2.503 days**
-  - avg carrier→delivered: **7.932 days**
-- Delayed orders:
-  - avg approved→carrier: **5.424 days**
-  - avg carrier→delivered: **27.875 days**
+2) **Status-based funnel construction**  
+Using timestamp availability, I generated flags indicating whether an order successfully reached each stage (purchased → approved → carrier → delivered → reviewed). This replicates a funnel without click logs by using operational transitions.
 
-Interpretation: delayed orders start slower at the seller handoff stage, then the transit stage expands dramatically.
+3) **Delay definition (Estimated vs Actual)**  
+Delivery delay is defined as the difference between the **estimated delivery date** and the **actual delivered date**. This produces:
+- `is_delayed` (0/1)
+- `delay_days` (number of days late)
 
-### 2) Seller handoff time correlates with customer satisfaction
-Average review score by approved→carrier bucket:
+4) **Lead-time bottleneck analysis**  
+I computed stage-to-stage lead times:
+- purchase → approval
+- approval → carrier (seller handoff latency)
+- carrier → delivered (shipping transit time)
 
-- 0–1 days: **4.248**
-- 2–3 days: **4.152**
-- 4–7 days: **4.018**
-- 8+ days: **3.592**
-- NULL (no carrier stage): **1.627**
+Then I compared average lead times between delayed and non-delayed cohorts and examined how lead-time buckets relate to review scores.
 
-Interpretation: when seller handoff exceeds ~4 days, review scores deteriorate significantly.
+## Results (What the data showed)
+Two patterns were consistently visible:
 
-### 3) Delay rates and bottlenecks vary by state (region-specific drivers)
-State-level delay rate ranking (delivered orders, min 500 samples) showed highest delay rates in:
-- **MA (17.4%)**, **CE (13.8%)**, **BA (12.2%)**, **RJ (12.1%)**, …
+- **Delayed deliveries have much longer seller handoff time.**  
+Orders that ended up delayed showed significantly higher average `approved_to_carrier_days` and dramatically higher `carrier_to_delivered_days` compared to non-delayed orders, indicating bottlenecks compound once the early stage slips.
 
-Delayed-orders-only bottleneck decomposition indicates different regional drivers:
-- RJ/BA/RS: carrier→delivered dominates (30+ days on average in delayed orders)
-- SP: seller handoff (approved→carrier) is unusually high in delayed orders (7+ days)
+- **Customer satisfaction drops as seller handoff time increases.**  
+When the Approved → Carrier stage exceeded a week, average review scores noticeably declined. This suggests that “late handoff” is not just an ops problem—it is a CX risk that can be measured and prioritized.
 
-## Actionable Recommendations
-- **Operations (SLA / Fulfillment):** enforce seller handoff SLAs (e.g., intervene at >4 days) and incentivize fulfillment programs for slow sellers.
-- **Logistics Partnerships:** prioritize last-mile improvements or alternative carriers for high-delay states where transit time dominates (e.g., RJ/BA).
-- **Product / CX:** region-sensitive delivery estimates to manage expectations and reduce review score drops.
+## Key Insights & Actions (Decision-oriented)
+### Insight 1 — Early-stage seller handoff is a CX risk lever
+When the seller handoff time (Approved → Carrier) grows, orders become much more likely to be delayed and reviews decline.  
+**Action:** Treat seller handoff latency as a controllable SLA. Create monitoring and escalation rules (e.g., alerts when handoff exceeds a threshold) and consider interventions such as vendor coaching, penalties, or fulfillment assistance for high-latency sellers.
 
-## How to Reproduce
-1. Upload Olist tables into BigQuery dataset: `olist_funnel_cx`
-2. Run SQL scripts in order:
-   - `sql/01_views_reviews.sql`
-   - `sql/02_views_order_fact.sql`
-   - `sql/03_views_funnel_delay.sql`
-   - `sql/04_views_lead_times.sql`
-3. Run analysis queries:
-   - `sql/05_analysis_state_bottlenecks.sql`
+### Insight 2 — Logistics problems are not uniform across regions
+Delay rates vary meaningfully by customer state, showing that delivery risk is geographically concentrated.  
+**Action:** Prioritize region-specific operational improvements (carrier capacity, fulfillment routing, or expectation management) rather than applying one global policy. Use region dashboards to focus resources where delay rates are systematically higher.
 
-## Repository Structure
-- `sql/` : view definitions and analysis queries
-- `README.md` : project narrative, results, and recommendations
+## Tools & Skills Demonstrated
+- BigQuery SQL (CTEs, joins, conditional logic, aggregations)
+- Analytical data modeling (order-level fact table + reusable views)
+- Funnel analysis without clickstream logs (status-based funnel)
+- Operational analytics: lead-time decomposition and delay definition
+- Translating metrics into actionable ops + CX recommendations
