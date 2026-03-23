@@ -1,151 +1,113 @@
-# Olist Order Funnel & Delivery CX Bottleneck Analysis (BigQuery SQL)
+# E-commerce Order Funnel & Delivery Bottleneck Analysis (SQL)
 
-## Project Overview
+## Key Results
 
-This project analyzes 100K+ real e-commerce orders from the Brazilian marketplace Olist to understand where operational delays occur and how those delays translate into customer dissatisfaction.
-
-Instead of relying on clickstream data, I designed a **status-based operational funnel** using real logistics timestamps. This allows delivery performance to be measured as a sequence of operational transitions rather than website behavior.
-
-The goal is to identify bottlenecks that operations teams can directly act on and connect those bottlenecks to measurable customer experience impact.
+- Seller handoff time (Approval → Carrier) is the **strongest predictor of delivery delay**  
+- Orders with longer seller handoff time show significantly higher delay risk  
+- Delivery delays are directly associated with **lower customer review scores**, indicating measurable CX impact  
+- Delay risk is **not evenly distributed** — certain regions consistently show higher delay rates  
+- Operational delays are not random — they are **systematic and measurable across fulfillment stages**
 
 ---
 
-## Business Problem
+## Project Overview
 
-Marketplace logistics performance strongly influences customer trust. Delivery delays reduce satisfaction, increase complaints, and create long-term retention risk.
+This project analyzes 100K+ real e-commerce orders from the Olist marketplace to identify where operational delays occur and how they impact customer satisfaction.
 
-The central hypothesis:
+Instead of relying on clickstream data, this analysis models the order lifecycle as a **status-based operational funnel**, using real logistics timestamps to measure performance across fulfillment stages.
 
-**Delays during early fulfillment stages increase the probability of late delivery and lower review scores.**
+The goal is to identify **actionable operational bottlenecks** and connect them to measurable customer experience outcomes.
 
-This project tests that hypothesis by decomposing the order lifecycle into measurable stages and connecting operational latency with customer outcomes.
+---
+
+## Business Question
+
+Which stages of the order fulfillment process drive delivery delays, and how do those delays impact customer satisfaction?
+
+---
+
+## Approach
+
+- Transformed raw multi-table data into a **1-row-per-order analytical dataset** to ensure accurate aggregation  
+- Built a status-based funnel using operational timestamps instead of behavioral logs  
+- Defined delivery delay as the gap between estimated and actual delivery dates  
+- Decomposed lead times across fulfillment stages to identify bottlenecks  
+- Compared delayed vs non-delayed orders to isolate operational risk factors  
 
 ---
 
 ## Data Model
 
-The analysis is performed entirely in BigQuery SQL using multi-table joins:
+The analysis is implemented in BigQuery using multiple joined tables:
 
-- **Orders table** – operational timestamps and order status
-- **Customers table** – geographic segmentation
-- **Reviews table** – customer satisfaction proxy
+- Orders (timestamps and order lifecycle)  
+- Customers (geographic segmentation)  
+- Reviews (customer satisfaction proxy)  
 
-Because reviews can contain multiple rows per order, I constructed a 1-row-per-order analytical view to preserve correct aggregation and prevent double counting.
-
-From this base, I built reusable analytical views:
-
-- order-level fact table
-- funnel stage flags
-- delay definition (estimated vs actual delivery)
-- stage-to-stage lead time decomposition
-
-This structure mirrors how production analytics pipelines are organized.
+To ensure correct aggregation, a **1-row-per-order fact table** was constructed, preventing duplication from multi-review records.
 
 ---
 
-## Analytical Approach
+## Analytical Framework
 
-### 1. Status-based funnel construction
+### 1. Funnel Construction
+Order lifecycle modeled as:
 
-Each order is tracked through operational stages:
+Purchase → Approval → Carrier → Delivery → Review  
 
-Purchase → Approval → Carrier Handoff → Delivery → Review
-
-Funnel progression is inferred from timestamp availability rather than click logs. This transforms operational data into a measurable funnel.
-
----
-
-### 2. Delivery delay definition
-
-Delivery delay is defined as:
-
-actual_delivery_date − estimated_delivery_date
-
-This creates:
-
-- `is_delayed` (binary risk flag)
-- `delay_days` (severity metric)
-
-Orders are then segmented into delayed vs non-delayed cohorts.
+Each stage is inferred from timestamp availability.
 
 ---
 
-### 3. Lead time decomposition
+### 2. Delay Definition
 
-To identify bottlenecks, the lifecycle is split into stage durations:
+- `delay_days = actual_delivery_date − estimated_delivery_date`  
+- `is_delayed` (binary flag)  
 
-- Purchase → Approval
-- Approval → Carrier (seller handoff)
-- Carrier → Delivered (shipping transit)
-
-Comparing lead times between delayed and non-delayed cohorts reveals where operational breakdown occurs.
+Orders are segmented into delayed vs non-delayed cohorts.
 
 ---
 
-### 4. Regional drill-down
+### 3. Lead Time Decomposition
 
-Customer location is used to analyze whether delay risk is geographically concentrated rather than uniform across the system.
+The fulfillment process is split into:
 
----
+- Purchase → Approval  
+- Approval → Carrier (**seller handoff**)  
+- Carrier → Delivered (**shipping transit**)  
 
-## Results
-
-The analysis reveals two dominant patterns:
-
-- Orders that become delayed show significantly longer seller handoff time before shipping begins
-- Average review scores decline as seller handoff time increases
-- Certain regions experience disproportionately higher delay rates
-- Bottlenecks compound: once early stages slip, later stages degrade further
-
-This confirms that operational latency is not random — it is structured and measurable.
+This decomposition isolates where delays originate.
 
 ---
 
-## Key Insights & Actions
+### 4. Regional Analysis
 
-### Insight 1 — Seller handoff time is a CX risk lever
-
-When the Approved → Carrier stage grows beyond a threshold, the probability of delay increases sharply and customer satisfaction declines.
-
-**Action:**  
-Treat seller handoff latency as a controllable SLA.  
-Implement monitoring dashboards and escalation rules for high-latency vendors. Consider fulfillment support or penalty tiers for chronic offenders.
+Customer location is used to identify geographic concentration of delay risk.
 
 ---
 
-### Insight 2 — Logistics inefficiency is regionally concentrated
+## Key Insights
 
-Delay risk is not evenly distributed. Some regions systematically underperform.
+**1. Seller handoff is the primary operational bottleneck**  
+Seller handoff time (Approval → Carrier) is the main driver of delivery delays and is strongly associated with lower customer satisfaction.
 
-**Action:**  
-Deploy targeted regional logistics interventions instead of global policy changes. Prioritize investment where delay density is highest.
+**2. Delay risk is regionally concentrated**  
+Certain states consistently underperform, indicating localized logistics inefficiencies rather than system-wide issues.
 
----
-
-### Insight 3 — Early delays compound downstream
-
-Once early stages slip, later stages amplify the delay.
-
-**Action:**  
-Focus prevention efforts upstream. Early-stage correction has disproportionate downstream benefit.
+**3. Early delays compound downstream**  
+Once early stages are delayed, total delivery time increases disproportionately.
 
 ---
 
-## Business Impact
+## Business Implications
 
-This framework enables:
-
-- proactive SLA enforcement
-- targeted regional optimization
-- expectation management strategies
-- measurable CX protection
-
-The methodology transforms raw logistics timestamps into an operational decision system.
+- Monitor and enforce SLA on seller handoff time  
+- Implement escalation rules for high-latency vendors  
+- Apply targeted regional logistics improvements instead of global fixes  
+- Focus on early-stage intervention to prevent downstream delays  
 
 ---
 
-## Tools & Skills Demonstrated
+## Tools
 
-BigQuery SQL • Analytical data modeling • Funnel analytics  
-Lead-time decomposition • Operational performance measurement  
-CX risk translation • Decision-oriented analytics
+- BigQuery SQL (data modeling, joins, analytical views)  
