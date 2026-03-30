@@ -1,7 +1,7 @@
 # E-commerce Order Funnel & Delivery Bottleneck Analysis (SQL)
 
 ## Dashboard Preview
-<img width="1190" height="784" alt="image" src="https://github.com/user-attachments/assets/111010cb-ffe6-48c7-9069-d335c0c07441" />
+<img width="1216" height="794" alt="image" src="https://github.com/user-attachments/assets/45c9eff5-93c4-45a4-8b70-b809ebff5b4c" />
 
 
 ## Project Overview
