@@ -1,5 +1,9 @@
 # E-commerce Order Funnel & Delivery Bottleneck Analysis (SQL)
 
+## Dashboard Preview
+<img width="1190" height="784" alt="image" src="https://github.com/user-attachments/assets/111010cb-ffe6-48c7-9069-d335c0c07441" />
+
+
 ## Project Overview
 This project analyzes 100K+ real e-commerce orders from the Olist marketplace to understand how delivery delays impact customer satisfaction and how delay risk varies across regions.
 
